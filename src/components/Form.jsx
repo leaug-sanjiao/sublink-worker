@@ -436,8 +436,10 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
   <div
     x-cloak
     x-show="qrCodeDataUrl"
-    x-on:click.self="qrCodeDataUrl = ''"
-    x-on:keydown.escape.window="qrCodeDataUrl = ''"
+    {...{
+      'x-on:click.self': "qrCodeDataUrl = ''",
+      'x-on:keydown.escape.window': "qrCodeDataUrl = ''"
+    }}
     role="dialog"
     aria-modal="true"
     aria-label={t('scanQRCode')}

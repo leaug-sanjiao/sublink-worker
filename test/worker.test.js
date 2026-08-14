@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createApp } from '../src/app/createApp.jsx';
 import { MemoryKVAdapter } from '../src/adapters/kv/memoryKv.js';
+import worker from '../src/worker.jsx';
 
 const createTestApp = (overrides = {}) => {
     const runtime = {
@@ -17,6 +18,19 @@ const createTestApp = (overrides = {}) => {
 };
 
 describe('Worker', () => {
+    it('GET /access-token only returns the token to an authenticated request', async () => {
+        const env = { ACCESS_TOKEN: 'test-access-token' };
+        const unauthorized = await worker.fetch(new Request('http://localhost/access-token?token=wrong'), env);
+        const authorized = await worker.fetch(new Request('http://localhost/access-token', {
+            headers: { Cookie: `sublink_auth=${env.ACCESS_TOKEN}` }
+        }), env);
+
+        expect(unauthorized.status).toBe(401);
+        expect(authorized.status).toBe(200);
+        expect(authorized.headers.get('cache-control')).toBe('no-store');
+        expect(await authorized.text()).toBe(env.ACCESS_TOKEN);
+    });
+
     it('GET / returns HTML', async () => {
         const app = createTestApp();
         const res = await app.request('http://localhost/');

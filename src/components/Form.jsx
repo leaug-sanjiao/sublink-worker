@@ -34,7 +34,8 @@ export const Form = (props) => {
     customShortCode: t('customShortCode'),
     optional: t('optional'),
     customShortCodePlaceholder: t('customShortCodePlaceholder'),
-    showFullLinks: t('showFullLinks')
+    showFullLinks: t('showFullLinks'),
+    tryShortLinks: t('tryShortLinks')
   };
 
   const scriptContent = `
@@ -380,6 +381,15 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
               >
                 <i class="fas" x-bind:class={`copied === '${field.key}' ? 'fa-check' : 'fa-copy'`}></i>
               </button>
+              <button
+                type="button"
+                x-on:click={`showQrCode((shortenedLinks || generatedLinks)?.${field.key})`}
+                aria-label={t('scanQRCode')}
+                title={t('scanQRCode')}
+                class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200 flex items-center justify-center"
+              >
+                <i class="fas fa-qrcode"></i>
+              </button>
             </div>
           </div>
         ))}
@@ -420,6 +430,30 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div
+    x-cloak
+    x-show="qrCodeDataUrl"
+    x-on:click.self="qrCodeDataUrl = ''"
+    x-on:keydown.escape.window="qrCodeDataUrl = ''"
+    role="dialog"
+    aria-modal="true"
+    aria-label={t('scanQRCode')}
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  >
+    <div class="relative rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-2xl">
+      <button
+        type="button"
+        x-on:click="qrCodeDataUrl = ''"
+        aria-label="Close"
+        class="absolute right-3 top-3 h-9 w-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+      >
+        <i class="fas fa-times"></i>
+      </button>
+      <h3 class="mb-4 pr-10 text-lg font-semibold text-gray-900 dark:text-white">{t('scanQRCode')}</h3>
+      <img x-bind:src="qrCodeDataUrl" alt={t('scanQRCode')} class="mx-auto h-auto max-w-full rounded-lg" />
     </div>
   </div>
 

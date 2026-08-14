@@ -79,6 +79,15 @@ export default {
       return errorResponse('Unauthorized', 401);
     }
 
+    if (url.pathname === '/access-token') {
+      return new Response(expectedToken, {
+        headers: {
+          'Cache-Control': 'no-store',
+          'Content-Type': 'text/plain; charset=utf-8',
+        },
+      });
+    }
+
     if (queryToken && url.pathname === '/') {
       return new Response(null, {
         status: 302,

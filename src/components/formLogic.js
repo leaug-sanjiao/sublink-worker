@@ -102,6 +102,8 @@ export const formLogicFn = (t) => {
             loading: false,
             generatedLinks: null,
             shortenedLinks: null,
+            accessToken: '',
+            qrCodeDataUrl: '',
             shortening: false,
             customShortCode: '',
             parsingUrl: false,
@@ -362,10 +364,47 @@ export const formLogicFn = (t) => {
                 window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
             },
 
+            async loadAccessToken() {
+                if (this.accessToken) return;
+
+                const response = await fetch('/access-token', { cache: 'no-store' });
+                if (response.status === 404) return;
+                if (!response.ok) throw new Error('Access token is unavailable');
+
+                this.accessToken = (await response.text()).trim();
+                if (!this.accessToken) throw new Error('Access token is empty');
+            },
+
+            withAccessToken(url) {
+                if (!this.accessToken) return url;
+
+                const protectedUrl = new URL(url);
+                protectedUrl.searchParams.set('token', this.accessToken);
+                return protectedUrl.toString();
+            },
+
+            showQrCode(url) {
+                if (!url || typeof window.qrcode !== 'function') {
+                    alert(window.APP_TRANSLATIONS.tryShortLinks);
+                    return;
+                }
+
+                try {
+                    const qr = window.qrcode(0, 'M');
+                    qr.addData(url);
+                    qr.make();
+                    this.qrCodeDataUrl = qr.createDataURL(6, 8);
+                } catch {
+                    alert(window.APP_TRANSLATIONS.tryShortLinks);
+                }
+            },
+
             async submitForm() {
                 this.loading = true;
                 this.shortenedLinks = null; // Reset shortened links when generating new links
                 try {
+                    await this.loadAccessToken();
+
                     // Get custom rules from the child component via the hidden input
                     const customRulesInput = document.querySelector('input[name="customRules"]');
                     const customRules = customRulesInput && customRulesInput.value ? JSON.parse(customRulesInput.value) : [];
@@ -394,10 +433,10 @@ export const formLogicFn = (t) => {
                     const queryString = params.toString();
 
                     this.generatedLinks = {
-                        xray: origin + '/xray?' + queryString,
-                        singbox: origin + '/singbox?' + queryString,
-                        clash: origin + '/clash?' + queryString,
-                        surge: origin + '/surge?' + queryString
+                        xray: this.withAccessToken(origin + '/xray?' + queryString),
+                        singbox: this.withAccessToken(origin + '/singbox?' + queryString),
+                        clash: this.withAccessToken(origin + '/clash?' + queryString),
+                        surge: this.withAccessToken(origin + '/surge?' + queryString)
                     };
 
                     // Scroll to results
@@ -439,7 +478,9 @@ export const formLogicFn = (t) => {
                     // Shorten each link type
                     for (const [type, url] of Object.entries(this.generatedLinks)) {
                         try {
-                            let apiUrl = `${origin}/shorten-v2?url=${encodeURIComponent(url)}`;
+                            const storedUrl = new URL(url);
+                            storedUrl.searchParams.delete('token');
+                            let apiUrl = `${origin}/shorten-v2?url=${encodeURIComponent(storedUrl.toString())}`;
 
                             // For the first request, either use custom code or let backend generate
                             // For subsequent requests, use the code from first request
@@ -468,7 +509,7 @@ export const formLogicFn = (t) => {
                                 surge: 's'
                             };
 
-                            shortened[type] = `${origin}/${prefixMap[type]}/${returnedCode}`;
+                            shortened[type] = this.withAccessToken(`${origin}/${prefixMap[type]}/${returnedCode}`);
                         } catch (error) {
                             console.error(`Error shortening ${type} link:`, error);
                             throw error;

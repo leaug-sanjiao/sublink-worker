@@ -332,7 +332,7 @@ export function createApp(bindings = {}) {
         }
     });
 
-    const redirectHandler = (prefix) => async (c) => {
+    const shortLinkHandler = (prefix) => async (c) => {
         try {
             const code = c.req.param('code');
             const shortLinks = requireShortLinkService(services.shortLinks);
@@ -340,16 +340,18 @@ export function createApp(bindings = {}) {
             if (!originalParam) return c.text('Short URL not found', 404);
 
             const url = new URL(c.req.url);
-            return c.redirect(`${url.origin}/${prefix}${originalParam}`);
+            // Serve subscriptions directly so clients do not need another authenticated request.
+            const request = new Request(`${url.origin}/${prefix}${originalParam}`, c.req.raw);
+            return await app.fetch(request, c.env);
         } catch (error) {
             return handleError(c, error, runtime.logger);
         }
     };
 
-    app.get('/s/:code', redirectHandler('surge'));
-    app.get('/b/:code', redirectHandler('singbox'));
-    app.get('/c/:code', redirectHandler('clash'));
-    app.get('/x/:code', redirectHandler('xray'));
+    app.get('/s/:code', shortLinkHandler('surge'));
+    app.get('/b/:code', shortLinkHandler('singbox'));
+    app.get('/c/:code', shortLinkHandler('clash'));
+    app.get('/x/:code', shortLinkHandler('xray'));
 
     app.post('/config', async (c) => {
         try {

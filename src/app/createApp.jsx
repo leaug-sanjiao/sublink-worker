@@ -90,7 +90,7 @@ export function createApp(bindings = {}) {
                 return c.text('Missing config parameter', 400);
             }
 
-            const selectedRules = c.get('serverExitsInput') ? ['Private'] : parseSelectedRules(c.req.query('selectedRules'));
+            const selectedRules = parseSelectedRules(c.req.query('selectedRules') || (c.get('serverExitsInput') ? 'balanced' : undefined));
             const customRules = parseJsonArray(c.req.query('customRules'));
             const ua = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
             const groupByCountry = !hasCombinationInputs(c) && parseBooleanFlag(c.req.query('group_by_country'));
@@ -146,7 +146,7 @@ export function createApp(bindings = {}) {
                 return c.text('Missing config parameter', 400);
             }
 
-            const selectedRules = c.get('serverExitsInput') ? ['Private'] : parseSelectedRules(c.req.query('selectedRules'));
+            const selectedRules = parseSelectedRules(c.req.query('selectedRules') || (c.get('serverExitsInput') ? 'balanced' : undefined));
             const customRules = parseJsonArray(c.req.query('customRules'));
             const ua = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
             const groupByCountry = !hasCombinationInputs(c) && parseBooleanFlag(c.req.query('group_by_country'));
@@ -625,6 +625,10 @@ async function buildClientConfig(builder, c) {
     builder.pendingUserProxyGroups = combination.groups;
     builder.subscriptionUserinfo = combination.subscriptionUserinfo;
     await builder.build(combination.nodes);
+    if (c.get('serverExitsInput')) {
+        const adGroup = builder.config['proxy-groups']?.find(group => group.name === builder.t('outboundNames.Ad Block'));
+        if (adGroup) adGroup.proxies = ['REJECT', ...adGroup.proxies.filter(name => name !== 'REJECT')];
+    }
     if (combination.originalGroup) {
         const groups = builder.config['proxy-groups'] || builder.config.outbounds || [];
         const group = groups.find(item => (item.name || item.tag) === builder.t('outboundNames.Node Select'));

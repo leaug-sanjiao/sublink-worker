@@ -438,7 +438,7 @@ export const formLogicFn = (t) => {
                     if (this.landingInput.trim()) params.append('landingNodes', this.landingInput);
                     if (this.landingInput.trim() && this.chainEnabled) params.append('chain', 'true');
                     params.append('ua', this.customUA);
-                    params.append('selectedRules', JSON.stringify(this.includeServerExits ? ['Private'] : this.selectedRules));
+                    params.append('selectedRules', JSON.stringify(this.selectedRules));
                     params.append('customRules', JSON.stringify(customRules));
 
                     if (!combinations && this.groupByCountry) params.append('group_by_country', 'true');

@@ -36,6 +36,19 @@ export function createApp(bindings = {}) {
         const lang = c.req.query('lang') || acceptLanguage?.split(',')[0] || 'zh-CN';
         c.set('lang', lang);
         c.set('t', createTranslator(lang));
+        if (parseBooleanFlag(c.req.query('server_exits'))) {
+            try {
+                const code = runtime.config.defaultFixedExitsCode;
+                if (!code) throw new MissingDependencyError('Default server exits are not configured');
+                const stored = await requireShortLinkService(services.shortLinks).resolveShortCode(code);
+                const input = stored && new URLSearchParams(stored).get('config');
+                if (!input?.trim()) throw new MissingDependencyError('Default server exits are unavailable');
+                c.set('serverExitsInput', input);
+                c.header('X-Server-Exits', 'enabled');
+            } catch (error) {
+                return handleError(c, error, runtime.logger);
+            }
+        }
         await next();
     });
 
@@ -59,7 +72,7 @@ export function createApp(bindings = {}) {
                                         {subtitle}
                                     </p>
                                 </div>
-                                <Form t={t} lang={lang} />
+                                <Form t={t} lang={lang} serverExitsAvailable={!!runtime.config.defaultFixedExitsCode} />
                             </div>
                         </div>
                     </main>
@@ -77,7 +90,7 @@ export function createApp(bindings = {}) {
                 return c.text('Missing config parameter', 400);
             }
 
-            const selectedRules = parseSelectedRules(c.req.query('selectedRules'));
+            const selectedRules = c.get('serverExitsInput') ? ['Private'] : parseSelectedRules(c.req.query('selectedRules'));
             const customRules = parseJsonArray(c.req.query('customRules'));
             const ua = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
             const groupByCountry = !hasCombinationInputs(c) && parseBooleanFlag(c.req.query('group_by_country'));
@@ -133,7 +146,7 @@ export function createApp(bindings = {}) {
                 return c.text('Missing config parameter', 400);
             }
 
-            const selectedRules = parseSelectedRules(c.req.query('selectedRules'));
+            const selectedRules = c.get('serverExitsInput') ? ['Private'] : parseSelectedRules(c.req.query('selectedRules'));
             const customRules = parseJsonArray(c.req.query('customRules'));
             const ua = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
             const groupByCountry = !hasCombinationInputs(c) && parseBooleanFlag(c.req.query('group_by_country'));
@@ -264,16 +277,16 @@ export function createApp(bindings = {}) {
     });
 
     app.get('/xray', async (c) => {
-        if (hasCombinationInputs(c)) return c.text('Use v2rayN/v2rayNG combination output for these node sources', 400);
-        const inputString = c.req.query('config');
-        if (!inputString) {
+        if (hasExplicitCombinationInputs(c)) return c.text('Use v2rayN/v2rayNG combination output for these node sources', 400);
+        const inputString = c.req.query('config') || '';
+        if (!inputString && !c.get('serverExitsInput')) {
             return c.text('Missing config parameter', 400);
         }
 
         const proxylist = inputString.split('\n');
         const finalProxyList = [];
         let subscriptionUserinfo;
-        const userAgent = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
+        const userAgent = c.req.query('ua') || (c.get('serverExitsInput') ? 'v2rayN' : getRequestHeader(c.req, 'User-Agent')) || DEFAULT_USER_AGENT;
         const headers = { 'User-Agent': userAgent };
 
         for (const proxy of proxylist) {
@@ -301,7 +314,16 @@ export function createApp(bindings = {}) {
             }
         }
 
-        const finalString = finalProxyList.join('\n');
+        const defaults = (c.get('serverExitsInput') || '').split('\n').map(line => line.trim()).filter(Boolean);
+        if (!inputString.includes('\n')) {
+            const preferred = defaults.findIndex(line => uriAccountKey(line) === uriAccountKey(inputString.trim()));
+            if (preferred > 0) defaults.unshift(...defaults.splice(preferred, 1));
+        }
+        const defaultAccounts = new Set(defaults.map(uriAccountKey).filter(Boolean));
+        const finalString = defaults.length ? [...new Set([
+            ...defaults,
+            ...finalProxyList.filter(line => !defaultAccounts.has(uriAccountKey(line)))
+        ])].join('\n') : finalProxyList.join('\n');
         if (!finalString) {
             return c.text('Missing config parameter', 400);
         }
@@ -569,7 +591,20 @@ function getRequestHeader(request, name) {
 }
 
 function hasCombinationInputs(c) {
+    return !!c.get('serverExitsInput') || hasExplicitCombinationInputs(c);
+}
+
+function hasExplicitCombinationInputs(c) {
     return !!(c.req.query('fixedNodes') || c.req.query('landingNodes') || parseBooleanFlag(c.req.query('chain')));
+}
+
+function uriAccountKey(value) {
+    try {
+        const url = new URL(value);
+        return JSON.stringify([url.protocol, url.hostname.toLowerCase(), url.port, url.username, url.password]);
+    } catch {
+        return null;
+    }
 }
 
 function resolveRequestCombination(c) {
@@ -577,7 +612,9 @@ function resolveRequestCombination(c) {
         input: c.req.query('config') || '',
         fixedInput: c.req.query('fixedNodes') || '',
         landingInput: c.req.query('landingNodes') || '',
+        defaultFixedInput: c.get('serverExitsInput') || '',
         chain: parseBooleanFlag(c.req.query('chain')),
+        chainFixedExits: parseBooleanFlag(c.req.query('chainFixedExits')),
         userAgent: c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT
     });
 }
@@ -586,7 +623,24 @@ async function buildClientConfig(builder, c) {
     if (!hasCombinationInputs(c)) return builder.build();
     const combination = await resolveRequestCombination(c);
     builder.pendingUserProxyGroups = combination.groups;
-    return builder.build(combination.nodes);
+    builder.subscriptionUserinfo = combination.subscriptionUserinfo;
+    await builder.build(combination.nodes);
+    if (combination.originalGroup) {
+        const groups = builder.config['proxy-groups'] || builder.config.outbounds || [];
+        const group = groups.find(item => (item.name || item.tag) === builder.t('outboundNames.Node Select'));
+        if (group) {
+            const key = Array.isArray(group.proxies) ? 'proxies' : 'outbounds';
+            const fronts = new Set(combination.fronts.map(node => node.tag));
+            let replaced = false;
+            group[key] = group[key].flatMap(name => {
+                if (!fronts.has(name)) return [name];
+                if (replaced) return [];
+                replaced = true;
+                return [combination.originalGroup];
+            });
+        }
+    }
+    return builder.config;
 }
 
 function requireShortLinkService(service) {

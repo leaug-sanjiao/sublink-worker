@@ -72,6 +72,7 @@ export const formLogicFn = (t) => {
         return {
             input: '',
             fixedInput: '',
+            includeServerExits: false,
             landingInput: '',
             chainEnabled: true,
             combinationWarning: '',
@@ -135,6 +136,7 @@ export const formLogicFn = (t) => {
 
                 // Load saved data
                 this.input = localStorage.getItem('inputTextarea') || '';
+                this.includeServerExits = !!window.APP_SERVER_EXITS_AVAILABLE && localStorage.getItem('includeServerExits') !== 'false';
                 this.chainEnabled = localStorage.getItem('nodeChainsEnabled') !== 'false';
                 this.showAdvanced = localStorage.getItem('advancedToggle') === 'true';
                 this.groupByCountry = localStorage.getItem('groupByCountry') === 'true';
@@ -169,6 +171,7 @@ export const formLogicFn = (t) => {
                 });
                 this.$watch('showAdvanced', val => localStorage.setItem('advancedToggle', val));
                 this.$watch('chainEnabled', val => localStorage.setItem('nodeChainsEnabled', val));
+                this.$watch('includeServerExits', val => localStorage.setItem('includeServerExits', val));
                 this.$watch('groupByCountry', val => localStorage.setItem('groupByCountry', val));
                 this.$watch('includeAutoSelect', val => localStorage.setItem('includeAutoSelect', val));
                 this.$watch('enableClashUI', val => localStorage.setItem('enableClashUI', val));
@@ -427,12 +430,15 @@ export const formLogicFn = (t) => {
                     const origin = window.location.origin;
                     const params = new URLSearchParams();
                     params.append('config', this.input);
-                    const combinations = !!(this.fixedInput.trim() || this.landingInput.trim());
+                    const explicitCombinations = !!(this.fixedInput.trim() || this.landingInput.trim());
+                    const combinations = this.includeServerExits || explicitCombinations;
+                    if (this.includeServerExits) params.append('server_exits', 'true');
+                    if (this.includeServerExits && this.chainEnabled) params.append('chainFixedExits', 'true');
                     if (this.fixedInput.trim()) params.append('fixedNodes', this.fixedInput);
                     if (this.landingInput.trim()) params.append('landingNodes', this.landingInput);
                     if (this.landingInput.trim() && this.chainEnabled) params.append('chain', 'true');
                     params.append('ua', this.customUA);
-                    params.append('selectedRules', JSON.stringify(this.selectedRules));
+                    params.append('selectedRules', JSON.stringify(this.includeServerExits ? ['Private'] : this.selectedRules));
                     params.append('customRules', JSON.stringify(customRules));
 
                     if (!combinations && this.groupByCountry) params.append('group_by_country', 'true');
@@ -474,6 +480,7 @@ export const formLogicFn = (t) => {
                         } catch {
                             this.combinationWarning = window.APP_TRANSLATIONS.nodeChainsNativeUnavailable;
                         }
+                        if (!explicitCombinations) this.generatedLinks.xray = this.withAccessToken(origin + '/xray?' + queryString);
                     } else {
                         this.generatedLinks.xray = this.withAccessToken(origin + '/xray?' + queryString);
                         this.generatedLinks.surge = this.withAccessToken(origin + '/surge?' + queryString);
@@ -676,7 +683,9 @@ export const formLogicFn = (t) => {
                 }
                 this.fixedInput = params.get('fixedNodes') || '';
                 this.landingInput = params.get('landingNodes') || '';
-                this.chainEnabled = params.get('chain') === 'true';
+                if (params.has('server_exits')) this.includeServerExits = params.get('server_exits') === 'true';
+                if (params.has('chainFixedExits')) this.chainEnabled = params.get('chainFixedExits') === 'true';
+                else this.chainEnabled = params.get('chain') === 'true';
 
                 // Extract selectedRules
                 const selectedRules = params.get('selectedRules');

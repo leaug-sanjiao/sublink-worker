@@ -92,14 +92,15 @@ export function generateV2rayNSubscription(combination) {
     });
     const links = converted.map(item => shareLink(item.scheme, item.profile));
     if (combination.chain) {
+        const targets = combination.chainTargets || combination.landings;
         const fronts = combination.fronts.filter(node => !excludedFronts.has(node.tag));
         if (!fronts.length) throw new InvalidConfigError('No compatible front nodes are available for this v2rayN/v2rayNG output');
-        if (fronts.length * combination.landings.length > 2000) {
+        if (fronts.length * targets.length > 2000) {
             throw new InvalidConfigError('Too many chain combinations; use fewer front or landing nodes');
         }
         let index = 0;
         for (const front of fronts) {
-            for (const landing of combination.landings) {
+            for (const landing of targets) {
                 links.push(shareLink('proxychain', {
                     IndexId: 'chain-' + index++,
                     ConfigType: 102,

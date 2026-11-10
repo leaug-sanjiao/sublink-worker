@@ -8,5 +8,8 @@ kv_namespaces = [
   { binding = "SUBLINK_KV", id = "8943789ed0af49659f887fc740d11240" }
 ]
 
+[vars]
+DEFAULT_FIXED_EXITS_CODE = "server-exits-v1"
+
 [assets]
 directory = "./public"

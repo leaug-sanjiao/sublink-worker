@@ -48,6 +48,7 @@ export const Form = (props) => {
     window.APP_TRANSLATIONS = ${JSON.stringify(translations)};
     window.PREDEFINED_RULE_SETS = ${JSON.stringify(PREDEFINED_RULE_SETS)};
     window.APP_LANG = ${JSON.stringify(lang || 'zh-CN')};
+    window.APP_SERVER_EXITS_AVAILABLE = ${JSON.stringify(!!props.serverExitsAvailable)};
     if (typeof __name === 'undefined') { var __name = function(fn) { return fn; }; }
     (${formLogicFn.toString()})();
   `;
@@ -70,7 +71,7 @@ export const Form = (props) => {
           model="input"
           rows={5}
           placeholder={t('urlPlaceholder')}
-          textareaAttrs={{ 'x-bind:required': '!fixedInput.trim() && !landingInput.trim()' }}
+          textareaAttrs={{ 'x-bind:required': '!includeServerExits && !fixedInput.trim() && !landingInput.trim()' }}
           labelActionsWrapperClass="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
           labelActions={[
             {
@@ -101,6 +102,13 @@ export const Form = (props) => {
           ]}
         />
       </div>
+
+      {props.serverExitsAvailable && (
+        <label class="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+          <input type="checkbox" x-model="includeServerExits" class="mt-1 rounded text-primary-600" />
+          <span><span class="font-medium">{t('serverExits')}</span><span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{t('serverExitsHint')}</span></span>
+        </label>
+      )}
 
       <details class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
         <summary class="font-semibold text-gray-900 dark:text-white cursor-pointer">{t('nodeCombinations')}</summary>
@@ -145,7 +153,7 @@ export const Form = (props) => {
   <div x-show="showAdvanced" {...{'x-transition:enter': 'transition ease-out duration-300', 'x-transition:enter-start': 'opacity-0 transform -translate-y-4', 'x-transition:enter-end': 'opacity-100 transform translate-y-0', 'x-transition:leave': 'transition ease-in duration-200', 'x-transition:leave-start': 'opacity-100 transform translate-y-0', 'x-transition:leave-end': 'opacity-0 transform -translate-y-4'}} class="space-y-6">
 
     {/* Rule Selection */ }
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+    <div x-show="!includeServerExits" class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <i class="fas fa-filter text-gray-400"></i>

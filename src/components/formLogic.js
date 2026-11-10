@@ -71,6 +71,10 @@ export const formLogicFn = (t) => {
 
         return {
             input: '',
+            fixedInput: '',
+            landingInput: '',
+            chainEnabled: true,
+            combinationWarning: '',
             showAdvanced: false,
             // Accordion states for each section (二级手风琴状态)
             accordionSections: {
@@ -131,6 +135,7 @@ export const formLogicFn = (t) => {
 
                 // Load saved data
                 this.input = localStorage.getItem('inputTextarea') || '';
+                this.chainEnabled = localStorage.getItem('nodeChainsEnabled') !== 'false';
                 this.showAdvanced = localStorage.getItem('advancedToggle') === 'true';
                 this.groupByCountry = localStorage.getItem('groupByCountry') === 'true';
                 this.includeAutoSelect = localStorage.getItem('includeAutoSelect') !== 'false';
@@ -163,6 +168,7 @@ export const formLogicFn = (t) => {
                     this.handleInputChange(val);
                 });
                 this.$watch('showAdvanced', val => localStorage.setItem('advancedToggle', val));
+                this.$watch('chainEnabled', val => localStorage.setItem('nodeChainsEnabled', val));
                 this.$watch('groupByCountry', val => localStorage.setItem('groupByCountry', val));
                 this.$watch('includeAutoSelect', val => localStorage.setItem('includeAutoSelect', val));
                 this.$watch('enableClashUI', val => localStorage.setItem('enableClashUI', val));
@@ -346,6 +352,8 @@ export const formLogicFn = (t) => {
             clearAll() {
                 if (confirm(window.APP_TRANSLATIONS.confirmClearAll)) {
                     this.input = '';
+                    this.fixedInput = '';
+                    this.landingInput = '';
                     this.generatedLinks = null;
                     this.shortenedLinks = null;
                     this.customShortCode = '';
@@ -401,8 +409,14 @@ export const formLogicFn = (t) => {
 
             async submitForm() {
                 this.loading = true;
+                this.generatedLinks = null;
                 this.shortenedLinks = null; // Reset shortened links when generating new links
+                this.combinationWarning = '';
                 try {
+                    if (this.landingInput.trim() && this.chainEnabled && !this.input.trim()) {
+                        alert(window.APP_TRANSLATIONS.nodeChainsRequireFront);
+                        return;
+                    }
                     await this.loadAccessToken();
 
                     // Get custom rules from the child component via the hidden input
@@ -413,12 +427,16 @@ export const formLogicFn = (t) => {
                     const origin = window.location.origin;
                     const params = new URLSearchParams();
                     params.append('config', this.input);
+                    const combinations = !!(this.fixedInput.trim() || this.landingInput.trim());
+                    if (this.fixedInput.trim()) params.append('fixedNodes', this.fixedInput);
+                    if (this.landingInput.trim()) params.append('landingNodes', this.landingInput);
+                    if (this.landingInput.trim() && this.chainEnabled) params.append('chain', 'true');
                     params.append('ua', this.customUA);
                     params.append('selectedRules', JSON.stringify(this.selectedRules));
                     params.append('customRules', JSON.stringify(customRules));
 
-                    if (this.groupByCountry) params.append('group_by_country', 'true');
-                    if (!this.includeAutoSelect) params.append('include_auto_select', 'false');
+                    if (!combinations && this.groupByCountry) params.append('group_by_country', 'true');
+                    if (combinations || !this.includeAutoSelect) params.append('include_auto_select', 'false');
                     if (this.enableClashUI) params.append('enable_clash_ui', 'true');
                     if (this.externalController) params.append('external_controller', this.externalController);
                     if (this.externalUiDownloadUrl) params.append('external_ui_download_url', this.externalUiDownloadUrl);
@@ -426,18 +444,40 @@ export const formLogicFn = (t) => {
                     // Add configId if present in URL
                     const urlParams = new URLSearchParams(window.location.search);
                     const configId = this.currentConfigId || urlParams.get('configId');
-                    if (configId) {
+                    if (!combinations && configId) {
                         params.append('configId', configId);
                     }
 
                     const queryString = params.toString();
 
                     this.generatedLinks = {
-                        xray: this.withAccessToken(origin + '/xray?' + queryString),
                         singbox: this.withAccessToken(origin + '/singbox?' + queryString),
-                        clash: this.withAccessToken(origin + '/clash?' + queryString),
-                        surge: this.withAccessToken(origin + '/surge?' + queryString)
+                        clash: this.withAccessToken(origin + '/clash?' + queryString)
                     };
+                    if (combinations) {
+                        const clashResponse = await fetch(this.generatedLinks.clash);
+                        if (!clashResponse.ok) {
+                            this.generatedLinks = null;
+                            alert(window.APP_TRANSLATIONS.nodeCombinationsInvalid);
+                            return;
+                        }
+                        const nativeUrl = this.withAccessToken(origin + '/v2rayn?' + queryString);
+                        try {
+                            const nativeResponse = await fetch(nativeUrl);
+                            if (nativeResponse.ok) {
+                                this.generatedLinks.v2rayn = nativeUrl;
+                                const count = Number(nativeResponse.headers.get('X-Excluded-Front-Nodes') || 0);
+                                if (count) this.combinationWarning = window.APP_TRANSLATIONS.nodeChainsExcluded.replace('{count}', String(count));
+                            } else {
+                                this.combinationWarning = window.APP_TRANSLATIONS.nodeChainsNativeUnavailable;
+                            }
+                        } catch {
+                            this.combinationWarning = window.APP_TRANSLATIONS.nodeChainsNativeUnavailable;
+                        }
+                    } else {
+                        this.generatedLinks.xray = this.withAccessToken(origin + '/xray?' + queryString);
+                        this.generatedLinks.surge = this.withAccessToken(origin + '/surge?' + queryString);
+                    }
 
                     // Scroll to results
                     setTimeout(() => {
@@ -506,6 +546,7 @@ export const formLogicFn = (t) => {
                             // Map types to their corresponding path prefixes
                             const prefixMap = {
                                 xray: 'x',
+                                v2rayn: 'n',
                                 singbox: 'b',
                                 clash: 'c',
                                 surge: 's'
@@ -556,14 +597,14 @@ export const formLogicFn = (t) => {
 
                 try {
                     const url = new URL(text);
-                    // Check if it matches our short link pattern: /[bcxs]/[code]
-                    const pathMatch = url.pathname.match(/^\/([bcxs])\/([a-zA-Z0-9_-]+)$/);
+                    // Check if it matches our short link pattern: /[bcxsn]/[code]
+                    const pathMatch = url.pathname.match(/^\/([bcxsn])\/([a-zA-Z0-9_-]+)$/);
                     if (pathMatch) {
                         return true;
                     }
 
                     // Check if it's a full subscription URL with query params
-                    const fullMatch = url.pathname.match(/^\/(singbox|clash|xray|surge)$/);
+                    const fullMatch = url.pathname.match(/^\/(singbox|clash|xray|surge|v2rayn)$/);
                     if (fullMatch && url.search) {
                         return true;
                     }
@@ -591,7 +632,7 @@ export const formLogicFn = (t) => {
                     }
 
                     // Check if it's a short link
-                    const shortMatch = urlToParse.pathname.match(/^\/([bcxs])\/([a-zA-Z0-9_-]+)$/);
+                    const shortMatch = urlToParse.pathname.match(/^\/([bcxsn])\/([a-zA-Z0-9_-]+)$/);
 
                     if (shortMatch) {
                         // It's a short link, resolve it first
@@ -633,6 +674,9 @@ export const formLogicFn = (t) => {
                 if (config) {
                     this.input = config;
                 }
+                this.fixedInput = params.get('fixedNodes') || '';
+                this.landingInput = params.get('landingNodes') || '';
+                this.chainEnabled = params.get('chain') === 'true';
 
                 // Extract selectedRules
                 const selectedRules = params.get('selectedRules');

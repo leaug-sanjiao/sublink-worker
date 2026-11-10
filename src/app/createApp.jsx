@@ -14,6 +14,8 @@ import { encodeBase64, tryDecodeSubscriptionLines } from '../utils.js';
 import { APP_NAME, APP_SUBTITLE } from '../constants.js';
 import { ShortLinkService } from '../services/shortLinkService.js';
 import { ConfigStorageService } from '../services/configStorageService.js';
+import { resolveNodeCombinations } from '../services/nodeCombinations.js';
+import { generateV2rayNSubscription } from '../builders/v2rayNSubscription.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { PREDEFINED_RULE_SETS, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
@@ -70,16 +72,16 @@ export function createApp(bindings = {}) {
 
     app.get('/singbox', async (c) => {
         try {
-            const config = c.req.query('config');
-            if (!config) {
+            const config = c.req.query('config') || '';
+            if (!config && !hasCombinationInputs(c)) {
                 return c.text('Missing config parameter', 400);
             }
 
             const selectedRules = parseSelectedRules(c.req.query('selectedRules'));
             const customRules = parseJsonArray(c.req.query('customRules'));
             const ua = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
-            const groupByCountry = parseBooleanFlag(c.req.query('group_by_country'));
-            const includeAutoSelect = c.req.query('include_auto_select') !== 'false';
+            const groupByCountry = !hasCombinationInputs(c) && parseBooleanFlag(c.req.query('group_by_country'));
+            const includeAutoSelect = !hasCombinationInputs(c) && c.req.query('include_auto_select') !== 'false';
             const enableClashUI = parseBooleanFlag(c.req.query('enable_clash_ui'));
             const externalController = c.req.query('external_controller');
             const externalUiDownloadUrl = c.req.query('external_ui_download_url');
@@ -91,7 +93,7 @@ export function createApp(bindings = {}) {
             const singboxConfigVersion = resolveSingboxConfigVersion(requestedSingboxVersion, requestUserAgent);
 
             let baseConfig = singboxConfigVersion === '1.11' ? SING_BOX_CONFIG_V1_11 : SING_BOX_CONFIG;
-            if (configId?.startsWith('singbox_')) {
+            if (!hasCombinationInputs(c) && configId?.startsWith('singbox_')) {
                 const storage = requireConfigStorage(services.configStorage);
                 const storedConfig = await storage.getConfigById(configId);
                 if (storedConfig) {
@@ -113,7 +115,7 @@ export function createApp(bindings = {}) {
                 singboxConfigVersion,
                 includeAutoSelect
             );
-            await builder.build();
+            await buildClientConfig(builder, c);
             const userinfo = builder.getSubscriptionUserinfo();
             if (userinfo) {
                 c.header('subscription-userinfo', userinfo);
@@ -126,16 +128,16 @@ export function createApp(bindings = {}) {
 
     app.get('/clash', async (c) => {
         try {
-            const config = c.req.query('config');
-            if (!config) {
+            const config = c.req.query('config') || '';
+            if (!config && !hasCombinationInputs(c)) {
                 return c.text('Missing config parameter', 400);
             }
 
             const selectedRules = parseSelectedRules(c.req.query('selectedRules'));
             const customRules = parseJsonArray(c.req.query('customRules'));
             const ua = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
-            const groupByCountry = parseBooleanFlag(c.req.query('group_by_country'));
-            const includeAutoSelect = c.req.query('include_auto_select') !== 'false';
+            const groupByCountry = !hasCombinationInputs(c) && parseBooleanFlag(c.req.query('group_by_country'));
+            const includeAutoSelect = !hasCombinationInputs(c) && c.req.query('include_auto_select') !== 'false';
             const enableClashUI = parseBooleanFlag(c.req.query('enable_clash_ui'));
             const externalController = c.req.query('external_controller');
             const externalUiDownloadUrl = c.req.query('external_ui_download_url');
@@ -143,7 +145,7 @@ export function createApp(bindings = {}) {
             const lang = c.get('lang');
 
             let baseConfig;
-            if (configId?.startsWith('clash_')) {
+            if (!hasCombinationInputs(c) && configId?.startsWith('clash_')) {
                 const storage = requireConfigStorage(services.configStorage);
                 baseConfig = await storage.getConfigById(configId);
             }
@@ -161,7 +163,7 @@ export function createApp(bindings = {}) {
                 externalUiDownloadUrl,
                 includeAutoSelect
             );
-            await builder.build();
+            await buildClientConfig(builder, c);
             const userinfo = builder.getSubscriptionUserinfo();
             const headers = { 'Content-Type': 'text/yaml; charset=utf-8' };
             if (userinfo) {
@@ -175,6 +177,7 @@ export function createApp(bindings = {}) {
 
     app.get('/surge', async (c) => {
         try {
+            if (hasCombinationInputs(c)) return c.text('Node combinations require Clash, Sing-box or v2rayN output', 400);
             const config = c.req.query('config');
             if (!config) {
                 return c.text('Missing config parameter', 400);
@@ -261,6 +264,7 @@ export function createApp(bindings = {}) {
     });
 
     app.get('/xray', async (c) => {
+        if (hasCombinationInputs(c)) return c.text('Use v2rayN/v2rayNG combination output for these node sources', 400);
         const inputString = c.req.query('config');
         if (!inputString) {
             return c.text('Missing config parameter', 400);
@@ -310,6 +314,18 @@ export function createApp(bindings = {}) {
         return c.text(encodeBase64(finalString), 200, responseHeaders);
     });
 
+    app.get('/v2rayn', async (c) => {
+        try {
+            const combination = await resolveRequestCombination(c);
+            if (!combination.nodes.length) return c.text('Missing config parameter', 400);
+            const result = generateV2rayNSubscription(combination);
+            c.header('X-Excluded-Front-Nodes', String(result.excludedFrontCount));
+            return c.text(result.content);
+        } catch (error) {
+            return handleError(c, error, runtime.logger);
+        }
+    });
+
     app.get('/shorten-v2', async (c) => {
         try {
             const url = c.req.query('url');
@@ -352,6 +368,7 @@ export function createApp(bindings = {}) {
     app.get('/b/:code', shortLinkHandler('singbox'));
     app.get('/c/:code', shortLinkHandler('clash'));
     app.get('/x/:code', shortLinkHandler('xray'));
+    app.get('/n/:code', shortLinkHandler('v2rayn'));
 
     app.post('/config', async (c) => {
         try {
@@ -384,13 +401,13 @@ export function createApp(bindings = {}) {
 
             const prefix = pathParts[1];
             const shortCode = pathParts[2];
-            if (!['b', 'c', 'x', 's'].includes(prefix)) return c.text(t('invalidShortUrl'), 400);
+            if (!['b', 'c', 'x', 's', 'n'].includes(prefix)) return c.text(t('invalidShortUrl'), 400);
 
             const shortLinks = requireShortLinkService(services.shortLinks);
             const originalParam = await shortLinks.resolveShortCode(shortCode);
             if (!originalParam) return c.text(t('shortUrlNotFound'), 404);
 
-            const mapping = { b: 'singbox', c: 'clash', x: 'xray', s: 'surge' };
+            const mapping = { b: 'singbox', c: 'clash', x: 'xray', s: 'surge', n: 'v2rayn' };
             const originalUrl = `${urlObj.origin}/${mapping[prefix]}${originalParam}`;
             return c.json({ originalUrl });
         } catch (error) {
@@ -549,6 +566,27 @@ function getRequestHeader(request, name) {
     }
 
     return undefined;
+}
+
+function hasCombinationInputs(c) {
+    return !!(c.req.query('fixedNodes') || c.req.query('landingNodes') || parseBooleanFlag(c.req.query('chain')));
+}
+
+function resolveRequestCombination(c) {
+    return resolveNodeCombinations({
+        input: c.req.query('config') || '',
+        fixedInput: c.req.query('fixedNodes') || '',
+        landingInput: c.req.query('landingNodes') || '',
+        chain: parseBooleanFlag(c.req.query('chain')),
+        userAgent: c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT
+    });
+}
+
+async function buildClientConfig(builder, c) {
+    if (!hasCombinationInputs(c)) return builder.build();
+    const combination = await resolveRequestCombination(c);
+    builder.pendingUserProxyGroups = combination.groups;
+    return builder.build(combination.nodes);
 }
 
 function requireShortLinkService(service) {

@@ -18,8 +18,10 @@ export class ShortLinkService {
         const kv = this.ensureKv();
         const shortCode = providedCode || generateWebPath();
         const existing = await kv.get(shortCode);
+        const previous = new URLSearchParams(existing || '');
+        const next = new URLSearchParams(queryString);
         if (existing !== null && existing !== undefined
-            && new URLSearchParams(existing).get('config') !== new URLSearchParams(queryString).get('config')) {
+            && ['config', 'fixedNodes', 'landingNodes'].some(key => (previous.get(key) || '') !== (next.get(key) || ''))) {
             throw new ServiceError('This short code belongs to another subscription. Use a different short code.', 409);
         }
         const ttl = this.options.shortLinkTtlSeconds;

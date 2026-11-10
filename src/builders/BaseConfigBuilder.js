@@ -20,8 +20,8 @@ export class BaseConfigBuilder {
         this.subscriptionUserinfo = undefined;
     }
 
-    async build() {
-        const customItems = await this.parseCustomItems();
+    async build(items) {
+        const customItems = items ?? await this.parseCustomItems();
         this.addCustomItems(customItems);
         this.addSelectors();
         return this.formatConfig();

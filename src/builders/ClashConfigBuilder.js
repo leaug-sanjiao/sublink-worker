@@ -129,7 +129,25 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
     }
 
     convertProxy(proxy) {
+        const converted = this.convertProxyFields(proxy);
+        return converted && proxy.detour ? { ...converted, 'dialer-proxy': proxy.detour } : converted;
+    }
+
+    convertProxyFields(proxy) {
         switch (proxy.type) {
+            case 'socks':
+                if (proxy.version && String(proxy.version) !== '5') {
+                    throw new InvalidConfigError('Clash output requires SOCKS5 nodes');
+                }
+                return {
+                    name: proxy.tag,
+                    type: 'socks5',
+                    server: proxy.server,
+                    port: proxy.server_port,
+                    username: proxy.username,
+                    password: proxy.password,
+                    udp: getClashUdpValue(proxy)
+                };
             case 'shadowsocks':
                 return {
                     name: proxy.tag,

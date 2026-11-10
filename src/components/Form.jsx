@@ -8,6 +8,7 @@ import { formLogicFn } from './formLogic.js';
 
 const LINK_FIELDS = [
   { key: 'xray', labelKey: 'xrayLink' },
+  { key: 'v2rayn', labelKey: 'v2raynCombinationLink' },
   { key: 'singbox', labelKey: 'singboxLink' },
   { key: 'clash', labelKey: 'clashLink' },
   { key: 'surge', labelKey: 'surgeLink' }
@@ -32,6 +33,10 @@ export const Form = (props) => {
     alreadyShortened: t('alreadyShortened'),
     shortenFailed: t('shortenFailed'),
     shortCodeConflict: t('shortCodeConflict'),
+    nodeChainsExcluded: t('nodeChainsExcluded'),
+    nodeChainsNativeUnavailable: t('nodeChainsNativeUnavailable'),
+    nodeChainsRequireFront: t('nodeChainsRequireFront'),
+    nodeCombinationsInvalid: t('nodeCombinationsInvalid'),
     customShortCode: t('customShortCode'),
     optional: t('optional'),
     customShortCodePlaceholder: t('customShortCodePlaceholder'),
@@ -65,7 +70,7 @@ export const Form = (props) => {
           model="input"
           rows={5}
           placeholder={t('urlPlaceholder')}
-          required
+          textareaAttrs={{ 'x-bind:required': '!fixedInput.trim() && !landingInput.trim()' }}
           labelActionsWrapperClass="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
           labelActions={[
             {
@@ -96,6 +101,20 @@ export const Form = (props) => {
           ]}
         />
       </div>
+
+      <details class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <summary class="font-semibold text-gray-900 dark:text-white cursor-pointer">{t('nodeCombinations')}</summary>
+        <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{t('nodeCombinationsHint')}</p>
+        <div class="mt-4 space-y-4">
+          <TextareaWithActions id="fixed-nodes" name="fixedNodes" label={t('fixedNodes')} model="fixedInput" rows={3} placeholder={t('fixedNodesHint')} />
+          <TextareaWithActions id="landing-nodes" name="landingNodes" label={t('landingNodes')} model="landingInput" rows={3} placeholder={t('landingNodesHint')} />
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" x-model="chainEnabled" class="rounded text-primary-600" />
+            {t('enableNodeChains')}
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{t('nodeChainsClientHint')}</p>
+        </div>
+      </details>
 
       {/* Advanced Options Toggle */}
       <div 
@@ -356,8 +375,9 @@ class="px-6 py-3.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 bo
       </div>
 
       <div class="mt-6 space-y-4">
+        <p x-show="combinationWarning" x-text="combinationWarning" class="text-sm text-amber-700 dark:text-amber-300"></p>
         {LINK_FIELDS.map((field) => (
-          <div class="relative group" key={field.key}>
+          <div class="relative group" key={field.key} x-show={`generatedLinks?.${field.key}`}>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {t(field.labelKey)}
             </label>

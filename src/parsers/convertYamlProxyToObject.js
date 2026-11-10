@@ -1,4 +1,9 @@
 export function convertYamlProxyToObject(p) {
+    const proxy = convertYamlProxyFields(p);
+    return proxy && p['dialer-proxy'] ? { ...proxy, detour: p['dialer-proxy'] } : proxy;
+}
+
+function convertYamlProxyFields(p) {
     if (!p || typeof p !== 'object' || !p.type) return null;
     const type = String(p.type).toLowerCase();
     const name = p.name || p.tag || 'proxy';
@@ -7,6 +12,17 @@ export function convertYamlProxyToObject(p) {
         return Array.isArray(value) ? value : [value];
     };
     switch (type) {
+        case 'socks5':
+            return {
+                tag: name,
+                type: 'socks',
+                server: p.server,
+                server_port: parseInt(p.port),
+                version: '5',
+                username: p.username,
+                password: p.password,
+                udp: typeof p.udp !== 'undefined' ? !!p.udp : undefined
+            };
         case 'ss':
         case 'shadowsocks':
             return {

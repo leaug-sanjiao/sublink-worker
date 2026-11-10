@@ -31,6 +31,7 @@ export const Form = (props) => {
     shortening: t('shortening'),
     alreadyShortened: t('alreadyShortened'),
     shortenFailed: t('shortenFailed'),
+    shortCodeConflict: t('shortCodeConflict'),
     customShortCode: t('customShortCode'),
     optional: t('optional'),
     customShortCodePlaceholder: t('customShortCodePlaceholder'),

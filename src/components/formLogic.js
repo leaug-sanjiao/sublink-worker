@@ -490,7 +490,9 @@ export const formLogicFn = (t) => {
 
                             const response = await fetch(apiUrl);
                             if (!response.ok) {
-                                throw new Error(`Failed to shorten ${type} link`);
+                                const error = new Error(`Failed to shorten ${type} link`);
+                                error.status = response.status;
+                                throw error;
                             }
                             const returnedCode = await response.text();
 
@@ -519,7 +521,9 @@ export const formLogicFn = (t) => {
                     this.shortenedLinks = shortened;
                 } catch (error) {
                     console.error('Error shortening links:', error);
-                    alert(window.APP_TRANSLATIONS.shortenFailed);
+                    alert(error.status === 409
+                        ? window.APP_TRANSLATIONS.shortCodeConflict
+                        : window.APP_TRANSLATIONS.shortenFailed);
                 } finally {
                     this.shortening = false;
                 }

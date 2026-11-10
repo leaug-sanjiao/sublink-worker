@@ -625,7 +625,7 @@ async function buildClientConfig(builder, c) {
     builder.pendingUserProxyGroups = combination.groups;
     builder.subscriptionUserinfo = combination.subscriptionUserinfo;
     await builder.build(combination.nodes);
-    if (c.get('serverExitsInput')) {
+    if (c.get('serverExitsInput') || combination.landingGroup) {
         const adGroup = builder.config['proxy-groups']?.find(group => group.name === builder.t('outboundNames.Ad Block'));
         if (adGroup) adGroup.proxies = ['REJECT', ...adGroup.proxies.filter(name => name !== 'REJECT')];
     }
@@ -641,6 +641,23 @@ async function buildClientConfig(builder, c) {
                 if (replaced) return [];
                 replaced = true;
                 return [combination.originalGroup];
+            });
+        }
+    }
+    if (combination.landingGroup) {
+        const roleGroups = new Set(combination.groups.map(group => group.name));
+        const landingChoices = new Set([...combination.landings, ...combination.chainNodes].map(node => node.tag));
+        const groups = builder.config['proxy-groups'] || builder.config.outbounds || [];
+        for (const group of groups) {
+            if (roleGroups.has(group.name || group.tag)) continue;
+            const key = Array.isArray(group.proxies) ? 'proxies' : 'outbounds';
+            if (!Array.isArray(group[key])) continue;
+            let replaced = false;
+            group[key] = group[key].flatMap(name => {
+                if (!landingChoices.has(name)) return [name];
+                if (replaced) return [];
+                replaced = true;
+                return [combination.landingGroup];
             });
         }
     }

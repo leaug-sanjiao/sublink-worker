@@ -416,7 +416,7 @@ export const formLogicFn = (t) => {
                 this.shortenedLinks = null; // Reset shortened links when generating new links
                 this.combinationWarning = '';
                 try {
-                    if (this.landingInput.trim() && this.chainEnabled && !this.input.trim()) {
+                    if (this.landingInput.trim() && this.chainEnabled && !this.includeServerExits && !this.input.trim()) {
                         alert(window.APP_TRANSLATIONS.nodeChainsRequireFront);
                         return;
                     }
@@ -433,7 +433,7 @@ export const formLogicFn = (t) => {
                     const explicitCombinations = !!(this.fixedInput.trim() || this.landingInput.trim());
                     const combinations = this.includeServerExits || explicitCombinations;
                     if (this.includeServerExits) params.append('server_exits', 'true');
-                    if (this.includeServerExits && this.chainEnabled) params.append('chainFixedExits', 'true');
+                    if (this.includeServerExits && this.chainEnabled && !this.landingInput.trim()) params.append('chainFixedExits', 'true');
                     if (this.fixedInput.trim()) params.append('fixedNodes', this.fixedInput);
                     if (this.landingInput.trim()) params.append('landingNodes', this.landingInput);
                     if (this.landingInput.trim() && this.chainEnabled) params.append('chain', 'true');

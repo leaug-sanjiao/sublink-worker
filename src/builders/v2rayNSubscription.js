@@ -62,7 +62,8 @@ function convertNode(node, index) {
 }
 
 export function generateV2rayNSubscription(combination) {
-    const frontNames = new Set(combination.fronts.map(node => node.tag));
+    const chainFronts = combination.chainFronts || combination.fronts;
+    const frontNames = new Set(chainFronts.map(node => node.tag));
     const excludedFronts = new Set();
     const nodes = combination.nodes.filter(node => {
         if (node.detour) return false;
@@ -93,7 +94,7 @@ export function generateV2rayNSubscription(combination) {
     const links = converted.map(item => shareLink(item.scheme, item.profile));
     if (combination.chain) {
         const targets = combination.chainTargets || combination.landings;
-        const fronts = combination.fronts.filter(node => !excludedFronts.has(node.tag));
+        const fronts = chainFronts.filter(node => !excludedFronts.has(node.tag));
         if (!fronts.length) throw new InvalidConfigError('No compatible front nodes are available for this v2rayN/v2rayNG output');
         if (fronts.length * targets.length > 2000) {
             throw new InvalidConfigError('Too many chain combinations; use fewer front or landing nodes');

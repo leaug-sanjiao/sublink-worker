@@ -4,6 +4,7 @@ import { InvalidConfigError } from './errors.js';
 
 const FRONT_GROUP = '前置线路';
 const ORIGINAL_GROUP = '原订阅节点';
+const LANDING_GROUP = '自由组合 · 落地出口';
 
 function accountKey(node) {
     return JSON.stringify([node.type, node.server?.toLowerCase(), node.server_port,
@@ -57,14 +58,18 @@ export async function resolveNodeCombinations({ input, fixedInput, landingInput,
     manualFixed.forEach(node => {
         if (!defaultAccounts.has(accountKey(node))) fixed.push(node);
     });
-    if (chain && (!fronts.length || !landings.length)) {
+    const chainFronts = [...fronts];
+    // Only the pure relay may front standalone landings; fixed landing exits stay isolated.
+    const relayFront = chain && defaults.find(node => node.tag === '中转原出口');
+    if (relayFront) chainFronts.push(relayFront);
+    if (chain && (!chainFronts.length || !landings.length)) {
         throw new InvalidConfigError('Chain mode requires both front nodes and standalone landing nodes');
     }
     const nodes = [...fixed, ...fronts, ...landings];
     if (new Set(nodes.map(identityKey)).size !== nodes.length) {
         throw new InvalidConfigError('The same node cannot be used as both a front, fixed exit or landing');
     }
-    const chainTargets = [...(chain ? landings : []), ...(chainFixedExits && fronts.length ? defaults : [])];
+    const chainTargets = chain ? landings : chainFixedExits && fronts.length ? defaults : [];
     const chainNodes = chainTargets.map(node => ({
         ...node,
         tag: '链式 · ' + (node.tag.startsWith('落地 · ') ? node.tag.slice('落地 · '.length) : node.tag),
@@ -72,22 +77,25 @@ export async function resolveNodeCombinations({ input, fixedInput, landingInput,
     }));
     nodes.push(...chainNodes);
     const names = nodes.map(node => node.tag);
-    if (new Set(names).size !== names.length || names.includes(FRONT_GROUP) || names.includes(ORIGINAL_GROUP)) {
+    if (new Set(names).size !== names.length || [FRONT_GROUP, ORIGINAL_GROUP, LANDING_GROUP].some(name => names.includes(name))) {
         throw new InvalidConfigError('Combination node names must be unique');
     }
     return {
         nodes,
         subscriptionUserinfo: originalSource.subscriptionUserinfo,
         fronts,
+        chainFronts,
         fixed,
         landings,
         chainNodes,
         chainTargets,
         chain: chainTargets.length > 0,
         originalGroup: fronts.length ? ORIGINAL_GROUP : null,
+        landingGroup: chain ? LANDING_GROUP : null,
         groups: [
             ...(fronts.length ? [{ name: ORIGINAL_GROUP, type: 'select', proxies: fronts.map(node => node.tag) }] : []),
-            ...(chainTargets.length ? [{ name: FRONT_GROUP, type: 'select', proxies: fronts.map(node => node.tag) }] : [])
+            ...(chainTargets.length ? [{ name: FRONT_GROUP, type: 'select', proxies: chainFronts.map(node => node.tag) }] : []),
+            ...(chain ? [{ name: LANDING_GROUP, type: 'select', proxies: chainNodes.map(node => node.tag) }] : [])
         ]
     };
 }

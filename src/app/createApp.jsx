@@ -16,7 +16,7 @@ import { ShortLinkService } from '../services/shortLinkService.js';
 import { ConfigStorageService } from '../services/configStorageService.js';
 import { resolveNodeCombinations } from '../services/nodeCombinations.js';
 import { generateV2rayNSubscription } from '../builders/v2rayNSubscription.js';
-import { ServiceError, MissingDependencyError } from '../services/errors.js';
+import { ServiceError, MissingDependencyError, InvalidConfigError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { PREDEFINED_RULE_SETS, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
 
@@ -45,6 +45,30 @@ export function createApp(bindings = {}) {
                 if (!input?.trim()) throw new MissingDependencyError('Default server exits are unavailable');
                 c.set('serverExitsInput', input);
                 c.header('X-Server-Exits', 'enabled');
+            } catch (error) {
+                return handleError(c, error, runtime.logger);
+            }
+        }
+        const landingSource = c.req.query('landingNodes');
+        let landingUrl;
+        if (landingSource?.trim()) {
+            try { landingUrl = new URL(landingSource.trim()); } catch { }
+        }
+        const localCode = landingUrl?.origin === new URL(c.req.url).origin
+            && landingUrl.pathname.match(/^\/[cbn]\/([^/]+)$/)?.[1];
+        if (localCode) {
+            try {
+                // Reuse authenticated same-site sources without fetching this Worker again.
+                const stored = await requireShortLinkService(services.shortLinks).resolveShortCode(localCode);
+                if (!stored) throw new InvalidConfigError('Standalone landing subscription not found');
+                const params = new URLSearchParams(stored);
+                if (['server_exits', 'chain', 'chainFixedExits'].some(key => parseBooleanFlag(params.get(key)))
+                    || params.get('fixedNodes') || (params.get('config') && params.get('landingNodes'))) {
+                    throw new InvalidConfigError('Use a standalone landing subscription, not a combined or chained subscription');
+                }
+                const input = params.get('landingNodes') || params.get('config');
+                if (!input?.trim()) throw new InvalidConfigError('Standalone landing subscription has no node source');
+                c.set('landingNodesInput', input);
             } catch (error) {
                 return handleError(c, error, runtime.logger);
             }
@@ -611,7 +635,7 @@ function resolveRequestCombination(c) {
     return resolveNodeCombinations({
         input: c.req.query('config') || '',
         fixedInput: c.req.query('fixedNodes') || '',
-        landingInput: c.req.query('landingNodes') || '',
+        landingInput: c.get('landingNodesInput') ?? c.req.query('landingNodes') ?? '',
         defaultFixedInput: c.get('serverExitsInput') || '',
         chain: parseBooleanFlag(c.req.query('chain')),
         chainFixedExits: parseBooleanFlag(c.req.query('chainFixedExits')),

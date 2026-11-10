@@ -30,7 +30,8 @@ async function parseNodes(input, prefix, userAgent) {
         if (node.detour) {
             throw new InvalidConfigError('Use standalone nodes as combination inputs; pre-chained nodes are not accepted');
         }
-        addProxyWithDedup(nodes, { ...node, tag: prefix + node.tag }, {
+        const name = String(node.tag || '').trim() || node.server + ':' + node.server_port;
+        addProxyWithDedup(nodes, { ...node, tag: prefix + name }, {
             isSame: (a, b) => identityKey(a) === identityKey(b)
         });
     }

@@ -286,7 +286,7 @@ export function createApp(bindings = {}) {
         const proxylist = inputString.split('\n');
         const finalProxyList = [];
         let subscriptionUserinfo;
-        const userAgent = c.req.query('ua') || (c.get('serverExitsInput') ? 'v2rayN' : getRequestHeader(c.req, 'User-Agent')) || DEFAULT_USER_AGENT;
+        const userAgent = c.req.query('ua') || (c.get('serverExitsInput') ? 'v2rayN/7.25.6' : getRequestHeader(c.req, 'User-Agent')) || DEFAULT_USER_AGENT;
         const headers = { 'User-Agent': userAgent };
 
         for (const proxy of proxylist) {
